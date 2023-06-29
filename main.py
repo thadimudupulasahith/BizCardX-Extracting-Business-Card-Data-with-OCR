@@ -1,111 +1,51 @@
 import streamlit as st
-import easyocr
-import mysql.connector
-import pandas as pd
-from PIL import Image
+from m2 import upload_database, extracted_data, show_database
 
-# Create a MySQL database connection
-conn = mysql.connector.connect(
-    host='localhost',
-    user='root',
-    password='GItamsai123$',
-    database='bizcardx_db'
-)
-cursor = conn.cursor()
+# Setting page configuration in Streamlit
+st.set_page_config(page_title='Bizcardx Extraction', layout="wide")
 
-# Create a table to store business card information
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS business_cards (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        company_name VARCHAR(255),
-        card_holder_name VARCHAR(255),
-        designation VARCHAR(255),
-        mobile_number VARCHAR(255),
-        email VARCHAR(255),
-        website VARCHAR(255),
-        area VARCHAR(255),
-        city VARCHAR(255),
-        state VARCHAR(255),
-        pin_code VARCHAR(255),
-        image LONGBLOB
-    )
-''')
-conn.commit()
+# Displaying title and balloons animation
+st.balloons()
+st.title(':violet[Bizcardx Data Extraction]')
 
-# Create a function to insert business card data into the database
-def insert_data(data, image):
-    cursor.execute('''
-        INSERT INTO business_cards (company_name, card_holder_name, designation, mobile_number, email, website, area, city, state, pin_code, image)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    ''', data + (image,))
-    conn.commit()
+# Creating tabs for data extraction and database side
+data_extraction, database_side = st.tabs(['Data uploading and Viewing', 'Database side'])
+file_name = 'thiru'
 
-# Create a function to retrieve business card data from the database
-def get_data():
-    cursor.execute('SELECT * FROM business_cards')
-    rows = cursor.fetchall()
-    df = pd.DataFrame(rows, columns=[column[0] for column in cursor.description])
-    return df
+with data_extraction:
+    # Uploading file to Streamlit app
+    uploaded = st.file_uploader('Choose an image file')
 
-# Create a Streamlit application
-def main():
-    st.title("Business Card OCR")
+    if uploaded is not None:
+        with open(f'{file_name}.png', 'wb') as f:
+            f.write(uploaded.getvalue())
 
-    # File uploader for business card image
-    uploaded_file = st.file_uploader("Upload a business card image", type=["png", "jpg", "jpeg"])
+        # Extracting data from image (Image view)
+        st.subheader(':violet[Image view of Data]')
+        if st.button('Extract Data from Image'):
+            extracted = extracted_data(f'{file_name}.png')
+            st.image(extracted)
 
-    if uploaded_file is not None:
-        # Display the uploaded image
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Business Card", use_column_width=True)
+        # Uploading data to the database
+        st.subheader(':violet[Upload extracted to Database]')
+        if st.button('Upload data'):
+            upload_database(f'{file_name}.png')
+            st.success('Data uploaded to Database successfully!', icon="✅")
 
-        # Extract text using easyOCR
-        reader = easyocr.Reader(['en'])
-        extracted_text = reader.readtext(image)
+# Getting data from the database and storing it in the 'df' variable
+df = show_database()
 
-        # Extract relevant information from the extracted text
-        data = {}
-        for item in extracted_text:
-            if 'company' in item[1].lower():
-                data['company_name'] = item[0]
-            elif 'name' in item[1].lower():
-                data['card_holder_name'] = item[0]
-            elif 'designation' in item[1].lower():
-                data['designation'] = item[0]
-            elif 'mobile' in item[1].lower():
-                data['mobile_number'] = item[0]
-            elif 'email' in item[1].lower():
-                data['email'] = item[0]
-            elif 'website' in item[1].lower():
-                data['website'] = item[0]
-            elif 'area' in item[1].lower():
-                data['area'] = item[0]
-            elif 'city' in item[1].lower():
-                data['city'] = item[0]
-            elif 'state' in item[1].lower():
-                data['state'] = item[0]
-            elif 'pin code' in item[1].lower():
-                data['pin_code'] = item[0]
+with database_side:
+    st.title(':violet[All Data in Database]')
 
-        # Display the extracted information
-        st.subheader("Extracted Information:")
-        for key, value in data.items():
-            st.write(f"{key.capitalize()}: {value}")
+    # Showing all data from the database
+    if st.button('Show All'):
+        st.dataframe(df)
 
-        # Save the extracted information and image to the database
-        if st.button("Save"):
-            # Convert the image to binary
-            image_binary = uploaded_file.read()
+    # Searching data in the database by column
+    st.subheader(':violet[Search Data by Column]')
+    column = str(st.radio('Select column to search', ('Name', 'Designation', 'Company_name', 'Address', 'Contact_number', 'Mail_id', 'Website_link'), horizontal=True))
+    value = str(st.selectbox('Please select value to search', df[column]))
 
-            # Insert the data into the database
-            insert_data(tuple(data.values()), image_binary)
-
-            st.success("Business card information saved successfully.")
-
-    # Display the database records
-    df = get_data()
-    st.subheader("Saved Business Card Information:")
-    st.dataframe(df)
-
-if __name__ == '__main__':
-    main()
+    if st.button('Search Data'):
+        st.dataframe(df[df[column] == value])
